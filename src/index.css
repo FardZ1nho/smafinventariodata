@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta: concreto cálido + acento ámbar tipo etiqueta de almacén */
+  --color-stone: #F2F0EA;
+  --color-stone-100: #E7E3D9;
+  --color-ink: #24211C;
+  --color-ink-muted: #726B60;
+  --color-line: #DEDACF;
+  --color-signal: #B8791A;
+  --color-danger: #B3413A;
+  --color-success: #3F7D52;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+}
