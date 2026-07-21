@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-const links = [
+const linksBase = [
   { to: '/', label: 'Resumen', icon: IconHome },
   { to: '/productos', label: 'Productos', icon: IconBox },
   { to: '/movimientos', label: 'Movimientos', icon: IconArrows },
@@ -10,7 +10,10 @@ const links = [
 ]
 
 export default function Layout() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, esAdmin } = useAuth()
+  const links = esAdmin
+    ? [...linksBase, { to: '/auditoria', label: 'Auditoría', icon: IconShield }]
+    : linksBase
 
   return (
     <div className="min-h-screen bg-stone md:flex">
@@ -119,6 +122,14 @@ function IconWarehouse(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
       <path d="M3 21V10l9-6 9 6v11" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M3 21h18M7 21v-6h4v6M15 12h3M15 15h3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function IconShield(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <path d="M12 3 4 6v6c0 4.4 3.4 8.4 8 9 4.6-.6 8-4.6 8-9V6l-8-3Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m9 12 2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
