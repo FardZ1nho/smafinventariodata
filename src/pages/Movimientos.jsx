@@ -21,6 +21,7 @@ export default function Movimientos() {
 
   // Filtros del historial
   const [filtroTipo, setFiltroTipo] = useState('todos')
+  const [filtroProducto, setFiltroProducto] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [pagina, setPagina] = useState(1)
@@ -57,6 +58,7 @@ export default function Movimientos() {
       .order('created_at', { ascending: false })
 
     if (filtroTipo !== 'todos') query = query.eq('tipo', filtroTipo)
+    if (filtroProducto) query = query.eq('producto_id', filtroProducto)
     if (fechaDesde) query = query.gte('created_at', `${fechaDesde}T00:00:00`)
     if (fechaHasta) query = query.lte('created_at', `${fechaHasta}T23:59:59`)
 
@@ -71,7 +73,7 @@ export default function Movimientos() {
   }
 
   useEffect(() => { cargarListasBase() }, [])
-  useEffect(() => { cargarMovimientos() }, [filtroTipo, fechaDesde, fechaHasta, pagina]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { cargarMovimientos() }, [filtroTipo, filtroProducto, fechaDesde, fechaHasta, pagina]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function actualizarFiltro(setter, valor) {
     setter(valor)
@@ -79,6 +81,7 @@ export default function Movimientos() {
   }
   function limpiarFiltros() {
     setFiltroTipo('todos')
+    setFiltroProducto('')
     setFechaDesde('')
     setFechaHasta('')
     setPagina(1)
@@ -360,7 +363,7 @@ export default function Movimientos() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-ink-muted uppercase tracking-wide">Historial</h3>
-            {(filtroTipo !== 'todos' || fechaDesde || fechaHasta) && (
+            {(filtroTipo !== 'todos' || filtroProducto || fechaDesde || fechaHasta) && (
               <button onClick={limpiarFiltros} className="text-xs font-medium text-signal hover:underline">
                 Limpiar filtros
               </button>
@@ -369,6 +372,14 @@ export default function Movimientos() {
 
           {/* Filtros */}
           <div className="flex flex-wrap gap-2 mb-4">
+            <div className="w-full sm:w-64">
+              <SelectorProducto
+                productos={productos}
+                value={filtroProducto}
+                onChange={(id) => actualizarFiltro(setFiltroProducto, id)}
+                placeholder="Buscar movimientos de un producto..."
+              />
+            </div>
             <div className="flex rounded-md bg-stone-100 p-1">
               {['todos', 'entrada', 'salida', 'transferencia'].map((t) => (
                 <button

@@ -13,6 +13,9 @@ export default function Productos() {
   const [disponibilidadKits, setDisponibilidadKits] = useState({}) // kit_id -> total disponible (suma de almacenes)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos') // todos | simple | kit
+  const [filtroCategoria, setFiltroCategoria] = useState('todas')
+  const [soloStockBajo, setSoloStockBajo] = useState(false)
+  const [soloConStock, setSoloConStock] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -79,7 +82,14 @@ export default function Productos() {
       p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       (p.sku ?? '').toLowerCase().includes(busqueda.toLowerCase())
     const coincideTipo = filtroTipo === 'todos' || p.tipo === filtroTipo
-    return coincideTexto && coincideTipo
+    const coincideCategoria = filtroCategoria === 'todas' || p.categoria_id === filtroCategoria
+
+    const esKit = p.tipo === 'kit'
+    const stock = esKit ? (disponibilidadKits[p.id] ?? 0) : (stockTotales[p.id] ?? 0)
+    const coincideStockBajo = !soloStockBajo || (!esKit && stock <= p.stock_minimo)
+    const coincideConStock = !soloConStock || stock > 0
+
+    return coincideTexto && coincideTipo && coincideCategoria && coincideStockBajo && coincideConStock
   })
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA))
@@ -87,6 +97,9 @@ export default function Productos() {
 
   function actualizarBusqueda(v) { setBusqueda(v); setPagina(1) }
   function actualizarFiltroTipo(v) { setFiltroTipo(v); setPagina(1) }
+  function actualizarFiltroCategoria(v) { setFiltroCategoria(v); setPagina(1) }
+  function alternarStockBajo() { setSoloStockBajo((v) => !v); setPagina(1) }
+  function alternarConStock() { setSoloConStock((v) => !v); setPagina(1) }
 
   return (
     <div>
@@ -121,6 +134,44 @@ export default function Productos() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <select
+          value={filtroCategoria}
+          onChange={(e) => actualizarFiltroCategoria(e.target.value)}
+          className="rounded-md border border-line px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
+        >
+          <option value="todas">Todas las categorías</option>
+          {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+
+        <button
+          onClick={alternarStockBajo}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
+            soloStockBajo ? 'bg-danger/10 border-danger/30 text-danger' : 'border-line text-ink-muted hover:bg-stone-100'
+          }`}
+        >
+          Solo stock bajo
+        </button>
+
+        <button
+          onClick={alternarConStock}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
+            soloConStock ? 'bg-success/10 border-success/30 text-success' : 'border-line text-ink-muted hover:bg-stone-100'
+          }`}
+        >
+          Solo con stock
+        </button>
+
+        {(filtroCategoria !== 'todas' || soloStockBajo || soloConStock) && (
+          <button
+            onClick={() => { setFiltroCategoria('todas'); setSoloStockBajo(false); setSoloConStock(false); setPagina(1) }}
+            className="text-xs font-medium text-signal hover:underline"
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {error && <p className="text-sm text-danger mb-4">{error}</p>}
