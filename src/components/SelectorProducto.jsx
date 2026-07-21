@@ -56,12 +56,12 @@ export default function SelectorProducto({ productos, value, onChange, placehold
                 key={p.id}
                 type="button"
                 onClick={() => seleccionar(p)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-stone-100 transition flex items-center justify-between gap-2"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-stone-100 transition"
               >
-                <span className="text-ink truncate">
+                <p className="text-ink leading-snug">
                   {p.nombre}{p.tipo === 'kit' ? <span className="text-ink-muted"> (kit)</span> : ''}
-                </span>
-                {p.sku && <span className="font-mono text-xs text-ink-muted shrink-0">{p.sku}</span>}
+                </p>
+                {p.sku && <p className="font-mono text-xs text-ink-muted mt-0.5">{p.sku}</p>}
               </button>
             ))
           )}
