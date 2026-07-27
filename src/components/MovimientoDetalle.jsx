@@ -52,6 +52,13 @@ export default function MovimientoDetalle({ movimiento, onClose, onConfirmarLleg
             </div>
           )}
 
+          {m.importaciones?.codigo && (
+            <div>
+              <p className="text-[10px] text-ink-muted uppercase tracking-wide">Código de importación</p>
+              <p className="text-sm font-mono text-ink">{m.importaciones.codigo}</p>
+            </div>
+          )}
+
           {m.estado === 'en_transito' && m.fecha_llegada_estimada && (
             <div>
               <p className="text-[10px] text-ink-muted uppercase tracking-wide">Llegada estimada</p>

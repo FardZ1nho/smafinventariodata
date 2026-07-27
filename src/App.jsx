@@ -10,6 +10,7 @@ import Movimientos from './pages/Movimientos'
 import Categorias from './pages/Categorias'
 import Almacenes from './pages/Almacenes'
 import Auditoria from './pages/Auditoria'
+import Importaciones from './pages/Importaciones'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route index element={<Resumen />} />
             <Route path="productos" element={<Productos />} />
             <Route path="movimientos" element={<Movimientos />} />
+            <Route path="importaciones" element={<Importaciones />} />
             <Route path="almacenes" element={<Almacenes />} />
             <Route path="categorias" element={<Categorias />} />
             <Route path="auditoria" element={<RutaAdmin><Auditoria /></RutaAdmin>} />

@@ -32,7 +32,7 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
 
       const { data: movs } = await supabase
         .from('movimientos')
-        .select('*, almacenes:almacen_id(nombre), origen:almacen_origen_id(nombre), destino:almacen_destino_id(nombre)')
+        .select('*, almacenes:almacen_id(nombre), origen:almacen_origen_id(nombre), destino:almacen_destino_id(nombre), importaciones(codigo)')
         .eq('producto_id', producto.id)
         .order('created_at', { ascending: false })
         .limit(20)
@@ -65,6 +65,10 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
         </div>
 
         <div className="p-5 space-y-6">
+          {producto.foto_url && (
+            <img src={producto.foto_url} alt={producto.nombre} className="w-full max-h-56 object-cover rounded-md border border-line" />
+          )}
+
           {/* Precios */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-stone rounded-md px-3 py-2">
@@ -89,11 +93,13 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
                       <div key={m.id} className="flex items-center justify-between px-3 py-2">
                         <div>
                           <p className="text-sm text-ink">{m.almacenes?.nombre}</p>
-                          {m.fecha_llegada_estimada && (
-                            <p className="text-[11px] text-ink-muted">
-                              llega {new Date(m.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}
-                            </p>
-                          )}
+                          <p className="text-[11px] text-ink-muted">
+                            {m.importaciones?.codigo && <span className="font-mono">{m.importaciones.codigo}</span>}
+                            {m.importaciones?.codigo && m.fecha_llegada_estimada && ' · '}
+                            {m.fecha_llegada_estimada && (
+                              <>llega {new Date(m.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
+                            )}
+                          </p>
                         </div>
                         <span className="font-mono text-sm font-medium text-signal">+{m.cantidad}</span>
                       </div>
@@ -148,7 +154,7 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
                   {stockPorAlmacen.map((s, i) => (
                     <div key={i} className="flex items-center justify-between px-3 py-2">
                       <span className="text-sm text-ink">{s.almacenes?.nombre}</span>
-                      <span className={`font-mono text-sm font-medium ${s.cantidad <= producto.stock_minimo ? 'text-danger' : 'text-ink'}`}>
+                      <span className={`font-mono text-sm font-medium ${s.cantidad <= 0 ? 'text-danger' : s.cantidad <= producto.stock_minimo ? 'text-signal' : 'text-ink'}`}>
                         {s.cantidad} {producto.unidad}
                       </span>
                     </div>

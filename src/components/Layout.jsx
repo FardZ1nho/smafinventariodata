@@ -5,6 +5,7 @@ const linksBase = [
   { to: '/', label: 'Resumen', icon: IconHome },
   { to: '/productos', label: 'Productos', icon: IconBox },
   { to: '/movimientos', label: 'Movimientos', icon: IconArrows },
+  { to: '/importaciones', label: 'Importaciones', icon: IconShip },
   { to: '/almacenes', label: 'Almacenes', icon: IconWarehouse },
   { to: '/categorias', label: 'Categorías', icon: IconTag },
 ]
@@ -114,6 +115,14 @@ function IconArrows(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
       <path d="M7 7h11l-3-3M17 17H6l3 3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function IconShip(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <path d="M3 14h18l-2 6H5l-2-6Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 14V6h8l3 4M9 6V3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

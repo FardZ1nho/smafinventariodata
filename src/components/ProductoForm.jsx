@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { subirFotoProducto } from '../lib/imagenes'
 import SelectorProducto from './SelectorProducto'
 
 export default function ProductoForm({ producto, categorias, productosSimples, onClose, onSaved }) {
@@ -13,10 +14,12 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
     stock_minimo: producto?.stock_minimo ?? 0,
     unidad: producto?.unidad ?? 'unidad',
     tipo: producto?.tipo ?? 'simple',
+    foto_url: producto?.foto_url ?? '',
   })
   const [componentes, setComponentes] = useState([]) // [{componente_id, cantidad}]
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
 
   useEffect(() => {
     if (esEdicion && producto.tipo === 'kit') {
@@ -30,6 +33,25 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
 
   function actualizar(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }))
+  }
+
+  async function manejarSeleccionFoto(e) {
+    const archivo = e.target.files?.[0]
+    if (!archivo) return
+    setError('')
+    setSubiendoFoto(true)
+    try {
+      const url = await subirFotoProducto(supabase, archivo)
+      actualizar('foto_url', url)
+    } catch (err) {
+      setError('No se pudo subir la foto: ' + err.message)
+    }
+    setSubiendoFoto(false)
+    e.target.value = '' // permite volver a elegir el mismo archivo si quiere reintentar
+  }
+
+  function quitarFoto() {
+    actualizar('foto_url', '')
   }
 
   function agregarComponente() {
@@ -63,6 +85,7 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
       stock_minimo: Number(form.stock_minimo) || 0,
       unidad: form.unidad.trim() || 'unidad',
       tipo: form.tipo,
+      foto_url: form.foto_url || null,
     }
 
     let productoId = producto?.id
@@ -135,6 +158,36 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
               className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
               placeholder="Bull Float 1.20m"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">Foto (opcional)</label>
+            <div className="flex items-center gap-3">
+              {form.foto_url ? (
+                <img src={form.foto_url} alt="" className="w-16 h-16 rounded-md object-cover border border-line" />
+              ) : (
+                <div className="w-16 h-16 rounded-md border border-dashed border-line flex items-center justify-center text-ink-muted text-xs">
+                  Sin foto
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <label className="inline-flex items-center justify-center px-3 py-1.5 rounded-md border border-line text-xs font-medium text-ink cursor-pointer hover:bg-stone-100 transition w-fit">
+                  {subiendoFoto ? 'Subiendo...' : form.foto_url ? 'Cambiar foto' : 'Elegir foto'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={manejarSeleccionFoto}
+                    disabled={subiendoFoto}
+                    className="hidden"
+                  />
+                </label>
+                {form.foto_url && !subiendoFoto && (
+                  <button type="button" onClick={quitarFoto} className="text-xs font-medium text-danger hover:underline text-left">
+                    Quitar foto
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

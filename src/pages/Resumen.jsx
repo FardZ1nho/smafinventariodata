@@ -1,43 +1,69 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import Paginador from '../components/Paginador'
+
+const POR_PAGINA_ALERTAS = 10
 
 export default function Resumen() {
   const [stats, setStats] = useState(null)
   const [alertas, setAlertas] = useState([])
   const [transito, setTransito] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [paginaAlertas, setPaginaAlertas] = useState(1)
 
   useEffect(() => {
     async function cargar() {
-      const [{ data: productos }, { data: totales }, { data: kits }, { data: enTransito }] = await Promise.all([
+      const [{ data: productos }, { data: totales }, { data: kits }, { data: importacionesPendientes }] = await Promise.all([
         supabase.from('productos').select('*').eq('activo', true),
         supabase.from('stock_total_producto').select('*'),
         supabase.from('kits_disponibilidad').select('*'),
-        supabase.from('movimientos').select('*, productos(nombre, unidad), almacenes:almacen_id(nombre)').eq('estado', 'en_transito'),
+        supabase.from('importaciones_resumen').select('*').in('estado', ['en_transito', 'parcial']),
       ])
 
       const mapaTotales = {}
       ;(totales ?? []).forEach((t) => { mapaTotales[t.producto_id] = t.stock_total })
 
-      const simples = (productos ?? []).filter((p) => p.tipo === 'simple')
-      const bajos = simples.filter((p) => (mapaTotales[p.id] ?? 0) <= p.stock_minimo)
-
       const mapaKits = {}
       ;(kits ?? []).forEach((k) => { mapaKits[k.kit_id] = (mapaKits[k.kit_id] ?? 0) + k.disponible })
-      const kitsAgotados = (productos ?? []).filter((p) => p.tipo === 'kit' && (mapaKits[p.id] ?? 0) <= 0)
+
+      // Para cada producto (simple o kit) calculamos su stock y lo clasificamos:
+      // sin_stock (0), stock_bajo (entre 1 y el mínimo), o normal (no genera alerta)
+      const conEstado = (productos ?? []).map((p) => {
+        const stock = p.tipo === 'kit' ? (mapaKits[p.id] ?? 0) : (mapaTotales[p.id] ?? 0)
+        const sinStock = stock <= 0
+        const stockBajo = !sinStock && stock <= p.stock_minimo
+        return { producto: p, stock, sinStock, stockBajo }
+      })
+
+      const sinStock = conEstado.filter((c) => c.sinStock)
+      const stockBajo = conEstado.filter((c) => c.stockBajo)
 
       setStats({
         totalProductos: (productos ?? []).length,
         totalKits: (productos ?? []).filter((p) => p.tipo === 'kit').length,
-        stockBajo: bajos.length,
-        valorInventario: simples.reduce((acc, p) => acc + (mapaTotales[p.id] ?? 0) * Number(p.precio_venta || 0), 0),
+        sinStock: sinStock.length,
+        stockBajo: stockBajo.length,
+        valorInventario: (productos ?? [])
+          .filter((p) => p.tipo === 'simple')
+          .reduce((acc, p) => acc + (mapaTotales[p.id] ?? 0) * Number(p.precio_venta || 0), 0),
       })
+
+      // Sin stock primero (más crítico), luego stock bajo
       setAlertas([
-        ...bajos.map((p) => ({ nombre: p.nombre, detalle: `${mapaTotales[p.id] ?? 0} ${p.unidad} (mínimo ${p.stock_minimo})` })),
-        ...kitsAgotados.map((p) => ({ nombre: p.nombre, detalle: 'No se puede armar ninguno' })),
+        ...sinStock.map((c) => ({
+          tipo: 'sin_stock',
+          nombre: c.producto.nombre,
+          detalle: c.producto.tipo === 'kit' ? 'No se puede armar ninguno' : '0 en stock',
+        })),
+        ...stockBajo.map((c) => ({
+          tipo: 'stock_bajo',
+          nombre: c.producto.nombre,
+          detalle: `${c.stock} ${c.producto.unidad} (mínimo ${c.producto.stock_minimo})`,
+        })),
       ])
-      const transitoOrdenado = [...(enTransito ?? [])].sort((a, b) => {
+
+      const transitoOrdenado = [...(importacionesPendientes ?? [])].sort((a, b) => {
         if (!a.fecha_llegada_estimada) return 1
         if (!b.fecha_llegada_estimada) return -1
         return new Date(a.fecha_llegada_estimada) - new Date(b.fecha_llegada_estimada)
@@ -51,14 +77,18 @@ export default function Resumen() {
 
   if (cargando) return <p className="text-sm text-ink-muted">Cargando...</p>
 
+  const totalPaginasAlertas = Math.max(1, Math.ceil(alertas.length / POR_PAGINA_ALERTAS))
+  const alertasPaginadas = alertas.slice((paginaAlertas - 1) * POR_PAGINA_ALERTAS, paginaAlertas * POR_PAGINA_ALERTAS)
+
   return (
     <div>
       <h2 className="text-2xl font-semibold text-ink mb-1">Resumen</h2>
       <p className="text-sm text-ink-muted mb-6">Vista general de tu inventario.</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
         <Tarjeta label="Productos" valor={stats.totalProductos} />
         <Tarjeta label="Kits" valor={stats.totalKits} />
+        <Tarjeta label="Sin stock" valor={stats.sinStock} resaltar={stats.sinStock > 0} critico />
         <Tarjeta label="Stock bajo" valor={stats.stockBajo} resaltar={stats.stockBajo > 0} />
         <Tarjeta label="Valor inventario" valor={`S/ ${stats.valorInventario.toFixed(2)}`} />
       </div>
@@ -66,34 +96,37 @@ export default function Resumen() {
       {transito.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-ink-muted uppercase tracking-wide">En tránsito</h3>
-            <Link to="/movimientos" className="text-xs font-medium text-signal hover:underline">Ver movimientos →</Link>
+            <h3 className="text-sm font-medium text-ink-muted uppercase tracking-wide">Importaciones en camino</h3>
+            <Link to="/importaciones" className="text-xs font-medium text-signal hover:underline">Ver todas →</Link>
           </div>
           <div className="bg-white border border-line rounded-lg divide-y divide-line">
-            {transito.map((m) => {
-              const dias = m.fecha_llegada_estimada
-                ? Math.ceil((new Date(m.fecha_llegada_estimada) - new Date(new Date().toDateString())) / 86400000)
+            {transito.map((i) => {
+              const dias = i.fecha_llegada_estimada
+                ? Math.ceil((new Date(i.fecha_llegada_estimada) - new Date(new Date().toDateString())) / 86400000)
                 : null
               return (
-                <div key={m.id} className="flex items-center justify-between px-4 py-3">
+                <Link key={i.id} to="/importaciones" className="flex items-center justify-between px-4 py-3 hover:bg-stone-100/60 transition">
                   <div>
-                    <p className="text-sm font-medium text-ink">{m.productos?.nombre}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-mono font-medium text-ink">{i.codigo}</p>
+                      {i.estado === 'parcial' && (
+                        <span className="text-[10px] font-mono uppercase tracking-wide bg-signal/10 text-signal px-1.5 py-0.5 rounded">parcial</span>
+                      )}
+                    </div>
                     <p className="text-xs text-ink-muted">
-                      Destino: {m.almacenes?.nombre}
-                      {m.fecha_llegada_estimada && (
-                        <> · llega {new Date(m.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
+                      {i.proveedor && <>{i.proveedor} · </>}
+                      {i.total_lineas} producto{i.total_lineas === 1 ? '' : 's'}
+                      {i.fecha_llegada_estimada && (
+                        <> · llega {new Date(i.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
                       )}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <span className="font-mono text-sm text-signal block">+{m.cantidad}</span>
-                    {dias !== null && (
-                      <span className={`text-[10px] font-mono ${dias <= 3 ? 'text-danger' : 'text-ink-muted'}`}>
-                        {dias <= 0 ? 'hoy' : dias === 1 ? 'mañana' : `en ${dias} días`}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                  {dias !== null && (
+                    <span className={`text-[10px] font-mono ${dias <= 3 ? 'text-danger' : 'text-ink-muted'}`}>
+                      {dias <= 0 ? 'hoy' : dias === 1 ? 'mañana' : `en ${dias} días`}
+                    </span>
+                  )}
+                </Link>
               )
             })}
           </div>
@@ -107,27 +140,41 @@ export default function Resumen() {
 
       {alertas.length === 0 ? (
         <div className="bg-white border border-line rounded-lg px-4 py-6 text-center">
-          <p className="text-sm text-ink-muted">Todo en orden. Ningún producto está por debajo de su stock mínimo.</p>
+          <p className="text-sm text-ink-muted">Todo en orden. Ningún producto está sin stock o por debajo de su mínimo.</p>
         </div>
       ) : (
-        <div className="bg-white border border-line rounded-lg divide-y divide-line">
-          {alertas.map((a, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm font-medium text-ink">{a.nombre}</span>
-              <span className="font-mono text-xs text-danger">{a.detalle}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="bg-white border border-line rounded-lg divide-y divide-line">
+            {alertasPaginadas.map((a, i) => (
+              <div key={i} className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                    a.tipo === 'sin_stock' ? 'bg-danger/10 text-danger' : 'bg-signal/10 text-signal'
+                  }`}>
+                    {a.tipo === 'sin_stock' ? 'sin stock' : 'stock bajo'}
+                  </span>
+                  <span className="text-sm font-medium text-ink">{a.nombre}</span>
+                </div>
+                <span className={`font-mono text-xs ${a.tipo === 'sin_stock' ? 'text-danger' : 'text-signal'}`}>
+                  {a.detalle}
+                </span>
+              </div>
+            ))}
+          </div>
+          <Paginador pagina={paginaAlertas} totalPaginas={totalPaginasAlertas} onCambiar={setPaginaAlertas} />
+        </>
       )}
     </div>
   )
 }
 
-function Tarjeta({ label, valor, resaltar }) {
+function Tarjeta({ label, valor, resaltar, critico }) {
   return (
     <div className="bg-white border border-line rounded-lg p-4">
       <p className="text-xs text-ink-muted uppercase tracking-wide mb-1">{label}</p>
-      <p className={`text-2xl font-semibold font-mono ${resaltar ? 'text-danger' : 'text-ink'}`}>{valor}</p>
+      <p className={`text-2xl font-semibold font-mono ${resaltar ? (critico ? 'text-danger' : 'text-signal') : 'text-ink'}`}>
+        {valor}
+      </p>
     </div>
   )
 }

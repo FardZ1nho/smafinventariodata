@@ -5,7 +5,7 @@ import MovimientoDetalle from '../components/MovimientoDetalle'
 import SelectorProducto from '../components/SelectorProducto'
 import Paginador from '../components/Paginador'
 
-const SELECT_MOVIMIENTO = '*, productos(nombre, unidad, tipo), almacenes:almacen_id(nombre), origen:almacen_origen_id(nombre), destino:almacen_destino_id(nombre)'
+const SELECT_MOVIMIENTO = '*, productos(nombre, unidad, tipo), almacenes:almacen_id(nombre), origen:almacen_origen_id(nombre), destino:almacen_destino_id(nombre), importaciones(codigo)'
 const POR_PAGINA = 15
 
 export default function Movimientos() {
@@ -34,20 +34,25 @@ export default function Movimientos() {
     almacen_origen_id: '',
     almacen_destino_id: '',
     en_transito: false,
+    codigo_importacion: '',
+    proveedor_importacion: '',
     fecha_llegada_estimada: '',
     motivo: '',
     nota: '',
   })
   const [guardando, setGuardando] = useState(false)
   const [stockProducto, setStockProducto] = useState({}) // almacen_id -> cantidad disponible
+  const [importacionesExistentes, setImportacionesExistentes] = useState([]) // para autocompletar código
 
   async function cargarListasBase() {
-    const [{ data: prods }, { data: alms }] = await Promise.all([
+    const [{ data: prods }, { data: alms }, { data: imps }] = await Promise.all([
       supabase.from('productos').select('id, nombre, tipo, unidad, sku').eq('activo', true).order('nombre'),
       supabase.from('almacenes').select('id, nombre').eq('activo', true).order('nombre'),
+      supabase.from('importaciones').select('id, codigo, proveedor, fecha_llegada_estimada').order('created_at', { ascending: false }),
     ])
     setProductos(prods ?? [])
     setAlmacenes(alms ?? [])
+    setImportacionesExistentes(imps ?? [])
   }
 
   async function cargarMovimientos() {
@@ -89,6 +94,10 @@ export default function Movimientos() {
 
   const productoSeleccionado = productos.find((p) => p.id === form.producto_id)
   const esKit = productoSeleccionado?.tipo === 'kit'
+
+  const importacionCoincidente = importacionesExistentes.find(
+    (i) => i.codigo.trim().toLowerCase() === form.codigo_importacion.trim().toLowerCase()
+  )
 
   // Carga el stock disponible del producto elegido, por almacén
   // (para productos simples: stock real / para kits: cuántos se pueden armar)
@@ -149,12 +158,40 @@ export default function Movimientos() {
       }
     }
 
-    if (form.tipo === 'entrada' && form.en_transito && !form.fecha_llegada_estimada) {
-      setError('Indica la fecha estimada de llegada.')
-      return
+    if (form.tipo === 'entrada' && form.en_transito) {
+      if (!form.codigo_importacion.trim()) { setError('Indica el código de importación.'); return }
+      if (!importacionCoincidente && !form.fecha_llegada_estimada) {
+        setError('Es un código de importación nuevo: indica la fecha estimada de llegada.')
+        return
+      }
     }
 
     setGuardando(true)
+
+    let importacionId = importacionCoincidente?.id ?? null
+    let fechaLlegada = importacionCoincidente?.fecha_llegada_estimada ?? form.fecha_llegada_estimada
+
+    // Si el código es nuevo, primero creamos la importación
+    if (form.tipo === 'entrada' && form.en_transito && !importacionCoincidente) {
+      const { data: nuevaImportacion, error: errorImportacion } = await supabase
+        .from('importaciones')
+        .insert({
+          codigo: form.codigo_importacion.trim(),
+          proveedor: form.proveedor_importacion.trim() || null,
+          fecha_llegada_estimada: form.fecha_llegada_estimada,
+          usuario_id: user.id,
+        })
+        .select()
+        .single()
+
+      if (errorImportacion) {
+        setError(errorImportacion.message.includes('duplicate') ? 'Ya existe una importación con ese código.' : errorImportacion.message)
+        setGuardando(false)
+        return
+      }
+      importacionId = nuevaImportacion.id
+      fechaLlegada = nuevaImportacion.fecha_llegada_estimada
+    }
 
     const payload = {
       producto_id: form.producto_id,
@@ -172,7 +209,10 @@ export default function Movimientos() {
       payload.almacen_id = form.almacen_id
       if (form.tipo === 'entrada') {
         payload.estado = form.en_transito ? 'en_transito' : 'confirmado'
-        if (form.en_transito) payload.fecha_llegada_estimada = form.fecha_llegada_estimada
+        if (form.en_transito) {
+          payload.fecha_llegada_estimada = fechaLlegada
+          payload.importacion_id = importacionId
+        }
       }
     }
 
@@ -182,7 +222,8 @@ export default function Movimientos() {
       setError(error.message.includes('STOCK_INSUFICIENTE') ? 'No se pudo registrar: no hay suficiente stock en ese almacén.' : error.message)
     } else {
       setOk('Movimiento registrado.')
-      setForm({ producto_id: '', tipo: 'salida', cantidad: 1, almacen_id: '', almacen_origen_id: '', almacen_destino_id: '', en_transito: false, fecha_llegada_estimada: '', motivo: '', nota: '' })
+      setForm({ producto_id: '', tipo: 'salida', cantidad: 1, almacen_id: '', almacen_origen_id: '', almacen_destino_id: '', en_transito: false, codigo_importacion: '', proveedor_importacion: '', fecha_llegada_estimada: '', motivo: '', nota: '' })
+      cargarListasBase()
       cargarMovimientos()
     }
     setGuardando(false)
@@ -311,16 +352,55 @@ export default function Movimientos() {
                   />
                   <span className="text-sm text-ink">Está en tránsito (importación en camino, aún no llega al almacén)</span>
                 </label>
+
                 {form.en_transito && (
-                  <div>
-                    <label className="block text-sm font-medium text-ink mb-1.5">Fecha estimada de llegada</label>
-                    <input
-                      type="date"
-                      value={form.fecha_llegada_estimada}
-                      onChange={(e) => actualizar('fecha_llegada_estimada', e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
-                    />
+                  <div className="space-y-3 border-l-2 border-signal/30 pl-3">
+                    <div>
+                      <label className="block text-sm font-medium text-ink mb-1.5">Código de importación</label>
+                      <input
+                        list="codigos-importacion"
+                        value={form.codigo_importacion}
+                        onChange={(e) => actualizar('codigo_importacion', e.target.value)}
+                        placeholder="ej. IMP-2026-014"
+                        className="w-full rounded-md border border-line px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
+                      />
+                      <datalist id="codigos-importacion">
+                        {importacionesExistentes.map((i) => <option key={i.id} value={i.codigo} />)}
+                      </datalist>
+                      {importacionCoincidente ? (
+                        <p className="text-xs text-success mt-1.5">
+                          Importación existente{importacionCoincidente.proveedor && <> · {importacionCoincidente.proveedor}</>}
+                          {importacionCoincidente.fecha_llegada_estimada && (
+                            <> · llega {new Date(importacionCoincidente.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
+                          )}
+                        </p>
+                      ) : form.codigo_importacion.trim() ? (
+                        <p className="text-xs text-ink-muted mt-1.5">Código nuevo: se creará una importación con estos datos.</p>
+                      ) : null}
+                    </div>
+
+                    {!importacionCoincidente && form.codigo_importacion.trim() && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-ink mb-1.5">Proveedor (opcional)</label>
+                          <input
+                            value={form.proveedor_importacion}
+                            onChange={(e) => actualizar('proveedor_importacion', e.target.value)}
+                            className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-ink mb-1.5">Fecha estimada de llegada</label>
+                          <input
+                            type="date"
+                            value={form.fecha_llegada_estimada}
+                            onChange={(e) => actualizar('fecha_llegada_estimada', e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                            className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -432,6 +512,7 @@ export default function Movimientos() {
                           ? `${m.origen?.nombre ?? '?'} → ${m.destino?.nombre ?? '?'}`
                           : m.almacenes?.nombre ?? '—'}
                         {m.motivo && <> · {m.motivo}</>}
+                        {m.importaciones?.codigo && <> · <span className="font-mono">{m.importaciones.codigo}</span></>}
                         {m.estado === 'en_transito' && m.fecha_llegada_estimada && (
                           <> · llega {new Date(m.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
                         )}

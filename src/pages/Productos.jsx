@@ -15,6 +15,7 @@ export default function Productos() {
   const [filtroTipo, setFiltroTipo] = useState('todos') // todos | simple | kit
   const [filtroCategoria, setFiltroCategoria] = useState('todas')
   const [soloStockBajo, setSoloStockBajo] = useState(false)
+  const [soloSinStock, setSoloSinStock] = useState(false)
   const [soloConStock, setSoloConStock] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -86,10 +87,13 @@ export default function Productos() {
 
     const esKit = p.tipo === 'kit'
     const stock = esKit ? (disponibilidadKits[p.id] ?? 0) : (stockTotales[p.id] ?? 0)
-    const coincideStockBajo = !soloStockBajo || (!esKit && stock <= p.stock_minimo)
+    const sinStock = stock <= 0
+    const stockBajo = !sinStock && stock <= p.stock_minimo
+    const coincideStockBajo = !soloStockBajo || stockBajo
+    const coincideSinStock = !soloSinStock || sinStock
     const coincideConStock = !soloConStock || stock > 0
 
-    return coincideTexto && coincideTipo && coincideCategoria && coincideStockBajo && coincideConStock
+    return coincideTexto && coincideTipo && coincideCategoria && coincideStockBajo && coincideSinStock && coincideConStock
   })
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA))
@@ -99,6 +103,7 @@ export default function Productos() {
   function actualizarFiltroTipo(v) { setFiltroTipo(v); setPagina(1) }
   function actualizarFiltroCategoria(v) { setFiltroCategoria(v); setPagina(1) }
   function alternarStockBajo() { setSoloStockBajo((v) => !v); setPagina(1) }
+  function alternarSinStock() { setSoloSinStock((v) => !v); setPagina(1) }
   function alternarConStock() { setSoloConStock((v) => !v); setPagina(1) }
 
   return (
@@ -149,10 +154,19 @@ export default function Productos() {
         <button
           onClick={alternarStockBajo}
           className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
-            soloStockBajo ? 'bg-danger/10 border-danger/30 text-danger' : 'border-line text-ink-muted hover:bg-stone-100'
+            soloStockBajo ? 'bg-signal/10 border-signal/30 text-signal' : 'border-line text-ink-muted hover:bg-stone-100'
           }`}
         >
           Solo stock bajo
+        </button>
+
+        <button
+          onClick={alternarSinStock}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${
+            soloSinStock ? 'bg-danger/10 border-danger/30 text-danger' : 'border-line text-ink-muted hover:bg-stone-100'
+          }`}
+        >
+          Solo sin stock
         </button>
 
         <button
@@ -164,9 +178,9 @@ export default function Productos() {
           Solo con stock
         </button>
 
-        {(filtroCategoria !== 'todas' || soloStockBajo || soloConStock) && (
+        {(filtroCategoria !== 'todas' || soloStockBajo || soloSinStock || soloConStock) && (
           <button
-            onClick={() => { setFiltroCategoria('todas'); setSoloStockBajo(false); setSoloConStock(false); setPagina(1) }}
+            onClick={() => { setFiltroCategoria('todas'); setSoloStockBajo(false); setSoloSinStock(false); setSoloConStock(false); setPagina(1) }}
             className="text-xs font-medium text-signal hover:underline"
           >
             Limpiar filtros
@@ -186,15 +200,22 @@ export default function Productos() {
             {paginados.map((p) => {
               const esKit = p.tipo === 'kit'
               const stock = esKit ? (disponibilidadKits[p.id] ?? 0) : (stockTotales[p.id] ?? 0)
-              const bajo = !esKit && stock <= p.stock_minimo
+              const sinStock = stock <= 0
+              const stockBajo = !sinStock && stock <= p.stock_minimo
               const cat = categorias.find((c) => c.id === p.categoria_id)
 
               return (
                 <button
                   key={p.id}
                   onClick={() => setProductoDetalle(p)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-stone-100/60 transition"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-stone-100/60 transition"
                 >
+                  {p.foto_url ? (
+                    <img src={p.foto_url} alt="" className="w-10 h-10 rounded-md object-cover border border-line shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-md bg-stone-100 shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-ink truncate">{p.nombre}</span>
@@ -203,8 +224,13 @@ export default function Productos() {
                           kit
                         </span>
                       )}
-                      {bajo && (
+                      {sinStock && (
                         <span className="text-[10px] font-mono uppercase tracking-wide bg-danger/10 text-danger px-1.5 py-0.5 rounded">
+                          sin stock
+                        </span>
+                      )}
+                      {stockBajo && (
+                        <span className="text-[10px] font-mono uppercase tracking-wide bg-signal/10 text-signal px-1.5 py-0.5 rounded">
                           stock bajo
                         </span>
                       )}
@@ -218,7 +244,7 @@ export default function Productos() {
 
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-right">
-                      <p className={`font-mono text-sm font-medium ${bajo ? 'text-danger' : 'text-ink'}`}>
+                      <p className={`font-mono text-sm font-medium ${sinStock ? 'text-danger' : stockBajo ? 'text-signal' : 'text-ink'}`}>
                         {stock} <span className="text-ink-muted font-sans">{p.unidad}</span>
                       </p>
                       <p className="text-[10px] text-ink-muted">{esKit ? 'disponibles' : 'en todos los almacenes'}</p>
@@ -231,6 +257,7 @@ export default function Productos() {
                         Quitar
                       </button>
                     </div>
+                  </div>
                   </div>
                 </button>
               )
