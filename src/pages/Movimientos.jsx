@@ -38,6 +38,7 @@ export default function Movimientos() {
     proveedor_importacion: '',
     fecha_llegada_estimada: '',
     motivo: '',
+    numero_comprobante: '',
     nota: '',
   })
   const [guardando, setGuardando] = useState(false)
@@ -198,6 +199,7 @@ export default function Movimientos() {
       tipo: form.tipo,
       cantidad: Number(form.cantidad),
       motivo: form.motivo.trim() || null,
+      numero_comprobante: form.numero_comprobante.trim() || null,
       nota: form.nota.trim() || null,
       usuario_id: user.id,
     }
@@ -222,7 +224,7 @@ export default function Movimientos() {
       setError(error.message.includes('STOCK_INSUFICIENTE') ? 'No se pudo registrar: no hay suficiente stock en ese almacén.' : error.message)
     } else {
       setOk('Movimiento registrado.')
-      setForm({ producto_id: '', tipo: 'salida', cantidad: 1, almacen_id: '', almacen_origen_id: '', almacen_destino_id: '', en_transito: false, codigo_importacion: '', proveedor_importacion: '', fecha_llegada_estimada: '', motivo: '', nota: '' })
+      setForm({ producto_id: '', tipo: 'salida', cantidad: 1, almacen_id: '', almacen_origen_id: '', almacen_destino_id: '', en_transito: false, codigo_importacion: '', proveedor_importacion: '', fecha_llegada_estimada: '', motivo: '', numero_comprobante: '', nota: '' })
       cargarListasBase()
       cargarMovimientos()
     }
@@ -407,7 +409,22 @@ export default function Movimientos() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">Motivo</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-ink">Motivo</label>
+                {form.tipo === 'salida' && (
+                  <button
+                    type="button"
+                    onClick={() => actualizar('motivo', form.motivo.trim().toLowerCase() === 'venta' ? '' : 'Venta')}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition ${
+                      form.motivo.trim().toLowerCase() === 'venta'
+                        ? 'bg-signal/10 border-signal/30 text-signal'
+                        : 'border-line text-ink-muted hover:bg-stone-100'
+                    }`}
+                  >
+                    Venta
+                  </button>
+                )}
+              </div>
               <input
                 value={form.motivo}
                 onChange={(e) => actualizar('motivo', e.target.value)}
@@ -415,6 +432,18 @@ export default function Movimientos() {
                 className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
               />
             </div>
+
+            {form.tipo === 'salida' && form.motivo.trim().toLowerCase() === 'venta' && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">N° de factura o comprobante</label>
+                <input
+                  value={form.numero_comprobante}
+                  onChange={(e) => actualizar('numero_comprobante', e.target.value)}
+                  placeholder="ej. F001-00123"
+                  className="w-full rounded-md border border-line px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-ink mb-1.5">Nota (opcional)</label>
@@ -512,6 +541,7 @@ export default function Movimientos() {
                           ? `${m.origen?.nombre ?? '?'} → ${m.destino?.nombre ?? '?'}`
                           : m.almacenes?.nombre ?? '—'}
                         {m.motivo && <> · {m.motivo}</>}
+                        {m.numero_comprobante && <> · <span className="font-mono">{m.numero_comprobante}</span></>}
                         {m.importaciones?.codigo && <> · <span className="font-mono">{m.importaciones.codigo}</span></>}
                         {m.estado === 'en_transito' && m.fecha_llegada_estimada && (
                           <> · llega {new Date(m.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>

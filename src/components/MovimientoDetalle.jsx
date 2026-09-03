@@ -12,9 +12,8 @@ export default function MovimientoDetalle({ movimiento, onClose, onConfirmarLleg
 
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <span className={`text-xs font-mono uppercase tracking-wide px-2 py-1 rounded ${
-              m.tipo === 'entrada' ? 'bg-success/10 text-success' : m.tipo === 'salida' ? 'bg-danger/10 text-danger' : 'bg-signal/10 text-signal'
-            }`}>
+            <span className={`text-xs font-mono uppercase tracking-wide px-2 py-1 rounded ${m.tipo === 'entrada' ? 'bg-success/10 text-success' : m.tipo === 'salida' ? 'bg-danger/10 text-danger' : 'bg-signal/10 text-signal'
+              }`}>
               {m.tipo}
             </span>
             {m.estado === 'en_transito' && (
@@ -72,6 +71,12 @@ export default function MovimientoDetalle({ movimiento, onClose, onConfirmarLleg
             <div>
               <p className="text-[10px] text-ink-muted uppercase tracking-wide">Motivo</p>
               <p className="text-sm text-ink">{m.motivo}</p>
+            </div>
+          )}
+          {m.numero_comprobante && (
+            <div>
+              <p className="text-[10px] text-ink-muted uppercase tracking-wide">N° de comprobante</p>
+              <p className="text-sm font-mono text-ink">{m.numero_comprobante}</p>
             </div>
           )}
           {m.nota && (
