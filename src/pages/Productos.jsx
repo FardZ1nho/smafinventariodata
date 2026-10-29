@@ -1,21 +1,31 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import ProductoForm from '../components/ProductoForm'
 import ProductoDetalle from '../components/ProductoDetalle'
 import Paginador from '../components/Paginador'
+import BotonDescarga from '../components/BotonDescarga'
+import { modeloInventario, opcionesDescarga } from '../lib/reportes'
+import { useAuth } from '../context/AuthContext'
 
 const POR_PAGINA = 10
 
 export default function Productos() {
+  const { perfil } = useAuth()
+  // Filtro inicial desde la URL (las tarjetas del Resumen enlazan a /productos?filtro=...)
+  const [parametros, setParametros] = useSearchParams()
+  const filtroInicial = parametros.get('filtro')
+  const productoInicial = parametros.get('ver') // abre directamente la ficha de ese producto
   const [productos, setProductos] = useState([])
   const [categorias, setCategorias] = useState([])
+  const [almacenes, setAlmacenes] = useState([])
   const [stockTotales, setStockTotales] = useState({}) // producto_id -> total
   const [disponibilidadKits, setDisponibilidadKits] = useState({}) // kit_id -> total disponible (suma de almacenes)
   const [busqueda, setBusqueda] = useState('')
-  const [filtroTipo, setFiltroTipo] = useState('todos') // todos | simple | kit
+  const [filtroTipo, setFiltroTipo] = useState(filtroInicial === 'kit' || filtroInicial === 'simple' ? filtroInicial : 'todos') // todos | simple | kit
   const [filtroCategoria, setFiltroCategoria] = useState('todas')
-  const [soloStockBajo, setSoloStockBajo] = useState(false)
-  const [soloSinStock, setSoloSinStock] = useState(false)
+  const [soloStockBajo, setSoloStockBajo] = useState(filtroInicial === 'stock_bajo')
+  const [soloSinStock, setSoloSinStock] = useState(filtroInicial === 'sin_stock')
   const [soloConStock, setSoloConStock] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -26,15 +36,23 @@ export default function Productos() {
 
   async function cargar() {
     setCargando(true)
-    const [{ data: prods, error: e1 }, { data: cats }, { data: totales }, { data: kitsDisp }] = await Promise.all([
+    const [{ data: prods, error: e1 }, { data: cats }, { data: totales }, { data: kitsDisp }, { data: alms }] = await Promise.all([
       supabase.from('productos').select('*').eq('activo', true).order('nombre'),
       supabase.from('categorias').select('*').order('nombre'),
       supabase.from('stock_total_producto').select('*'),
       supabase.from('kits_disponibilidad').select('*'),
+      supabase.from('almacenes').select('id, nombre').eq('activo', true).order('nombre'),
     ])
     if (e1) setError(e1.message)
     setProductos(prods ?? [])
     setCategorias(cats ?? [])
+    setAlmacenes(alms ?? [])
+    if (productoInicial) {
+      const p = (prods ?? []).find((x) => x.id === productoInicial)
+      if (p) setProductoDetalle(p)
+      // Se quita de la URL para que no se vuelva a abrir al recargar la lista
+      setParametros((actuales) => { actuales.delete('ver'); return actuales }, { replace: true })
+    }
 
     const mapaTotales = {}
     ;(totales ?? []).forEach((t) => { mapaTotales[t.producto_id] = t.stock_total })
@@ -50,7 +68,7 @@ export default function Productos() {
     setCargando(false)
   }
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function desactivar(id) {
     if (!confirm('¿Desactivar este producto? No se borrará el historial, solo dejará de aparecer en la lista.')) return
@@ -106,19 +124,46 @@ export default function Productos() {
   function alternarSinStock() { setSoloSinStock((v) => !v); setPagina(1) }
   function alternarConStock() { setSoloConStock((v) => !v); setPagina(1) }
 
+  // La descarga respeta los filtros de pantalla y opcionalmente se limita a un almacén
+  function modeloDescarga(almacen) {
+    const descripcion = [
+      almacen ? `Almacén: ${almacen.nombre}` : 'Todos los almacenes',
+      filtroTipo !== 'todos' && (filtroTipo === 'kit' ? 'Solo kits' : 'Solo simples'),
+      filtroCategoria !== 'todas' && `Categoría: ${categorias.find((c) => c.id === filtroCategoria)?.nombre ?? ''}`,
+      soloStockBajo && 'Solo stock bajo',
+      soloSinStock && 'Solo sin stock',
+      soloConStock && 'Solo con stock',
+      busqueda && `Búsqueda: "${busqueda}"`,
+      `${filtrados.length} de ${productos.length} productos`,
+    ].filter(Boolean).join(' · ')
+    return modeloInventario({ productos: filtrados, categorias, almacenes, almacen, filtros: descripcion })
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between mb-6 gap-3">
         <div>
           <h2 className="text-2xl font-semibold text-ink mb-1">Productos</h2>
-          <p className="text-sm text-ink-muted">{productos.length} productos activos</p>
+          <p className="text-sm text-ink-muted">
+            {filtrados.length === productos.length
+              ? `${productos.length} productos activos`
+              : `${filtrados.length} encontrados de ${productos.length} productos activos`}
+          </p>
         </div>
-        <button
-          onClick={abrirNuevo}
-          className="bg-ink text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-ink/90 transition whitespace-nowrap"
-        >
-          + Nuevo producto
-        </button>
+        <div className="flex items-center gap-2">
+          <BotonDescarga
+            opciones={opcionesDescarga([
+              { etiqueta: 'Todos los almacenes', modelo: () => modeloDescarga(null) },
+              ...almacenes.map((a) => ({ etiqueta: `Solo ${a.nombre}`, modelo: () => modeloDescarga(a) })),
+            ], perfil?.nombre)}
+          />
+          <button
+            onClick={abrirNuevo}
+            className="bg-ink text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-ink/90 transition whitespace-nowrap"
+          >
+            + Nuevo producto
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">

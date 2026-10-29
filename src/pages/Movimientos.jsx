@@ -4,12 +4,15 @@ import { useAuth } from '../context/AuthContext'
 import MovimientoDetalle from '../components/MovimientoDetalle'
 import SelectorProducto from '../components/SelectorProducto'
 import Paginador from '../components/Paginador'
+import BotonDescarga from '../components/BotonDescarga'
+import { modeloMovimientos, opcionesDescarga } from '../lib/reportes'
+import { fechaCorta } from '../lib/pdf'
 
-const SELECT_MOVIMIENTO = '*, productos(nombre, unidad, tipo), almacenes:almacen_id(nombre), origen:almacen_origen_id(nombre), destino:almacen_destino_id(nombre), importaciones(codigo)'
+const SELECT_MOVIMIENTO = '*, productos(nombre, unidad, tipo, sku), almacenes:almacen_id(nombre), origen:almacen_origen_id(nombre), destino:almacen_destino_id(nombre), importaciones(codigo)'
 const POR_PAGINA = 15
 
 export default function Movimientos() {
-  const { user } = useAuth()
+  const { user, perfil, esAdmin } = useAuth()
   const [movimientos, setMovimientos] = useState([])
   const [totalMovimientos, setTotalMovimientos] = useState(0)
   const [productos, setProductos] = useState([])
@@ -56,22 +59,30 @@ export default function Movimientos() {
     setImportacionesExistentes(imps ?? [])
   }
 
-  async function cargarMovimientos() {
-    setCargando(true)
+  // Consulta del historial con los filtros actuales. La usan la lista paginada y el PDF.
+  function consultaHistorial(opciones) {
     let query = supabase
       .from('movimientos')
-      .select(SELECT_MOVIMIENTO, { count: 'exact' })
+      .select(SELECT_MOVIMIENTO, opciones)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
 
     if (filtroTipo !== 'todos') query = query.eq('tipo', filtroTipo)
     if (filtroProducto) query = query.eq('producto_id', filtroProducto)
-    if (fechaDesde) query = query.gte('created_at', `${fechaDesde}T00:00:00`)
-    if (fechaHasta) query = query.lte('created_at', `${fechaHasta}T23:59:59`)
+    // Las fechas del filtro son días en hora local (Lima); se convierten a instantes UTC
+    if (fechaDesde) query = query.gte('created_at', new Date(`${fechaDesde}T00:00:00`).toISOString())
+    if (fechaHasta) {
+      const diaSiguiente = new Date(`${fechaHasta}T00:00:00`)
+      diaSiguiente.setDate(diaSiguiente.getDate() + 1)
+      query = query.lt('created_at', diaSiguiente.toISOString())
+    }
+    return query
+  }
 
+  async function cargarMovimientos() {
+    setCargando(true)
     const desde = (pagina - 1) * POR_PAGINA
-    query = query.range(desde, desde + POR_PAGINA - 1)
-
-    const { data, error, count } = await query
+    const { data, error, count } = await consultaHistorial({ count: 'exact' }).range(desde, desde + POR_PAGINA - 1)
     if (error) setError(error.message)
     setMovimientos(data ?? [])
     setTotalMovimientos(count ?? 0)
@@ -231,11 +242,35 @@ export default function Movimientos() {
     setGuardando(false)
   }
 
-  async function confirmarLlegada(id) {
-    const { error } = await supabase.from('movimientos').update({ estado: 'confirmado' }).eq('id', id)
-    if (error) { setError(error.message); return }
+  async function confirmarLlegada(id, cantidadRecibida) {
+    // Solo si sigue en tránsito: evita cambiar la cantidad de algo ya recibido (doble clic, dos usuarios)
+    const { error } = await supabase
+      .from('movimientos')
+      .update({ estado: 'confirmado', cantidad: cantidadRecibida })
+      .eq('id', id)
+      .eq('estado', 'en_transito')
+      .is('anulado_at', null)
+    if (error) return traducirError(error.message)
     setMovimientoDetalle(null)
     cargarMovimientos()
+    cargarListasBase()
+  }
+
+  async function anularMovimiento(id, motivo) {
+    const { error } = await supabase.rpc('anular_movimiento', { p_movimiento_id: id, p_motivo: motivo })
+    if (error) return traducirError(error.message)
+    setMovimientoDetalle(null)
+    cargarMovimientos()
+    cargarListasBase()
+  }
+
+  // Los errores del servidor vienen como "CODIGO: mensaje"
+  function traducirError(mensaje) {
+    if (mensaje.includes('STOCK_INSUFICIENTE')) {
+      return 'No se puede: el stock de ese almacén quedaría negativo (por ejemplo, las unidades ya salieron).'
+    }
+    const separador = mensaje.indexOf(': ')
+    return /^[A-Z_]+:/.test(mensaje) ? mensaje.slice(separador + 2) : mensaje
   }
 
   const totalPaginas = Math.max(1, Math.ceil(totalMovimientos / POR_PAGINA))
@@ -285,7 +320,11 @@ export default function Movimientos() {
                   <label className="block text-sm font-medium text-ink mb-1.5">Desde</label>
                   <select
                     value={form.almacen_origen_id}
-                    onChange={(e) => actualizar('almacen_origen_id', e.target.value)}
+                    onChange={(e) => {
+                      const origen = e.target.value
+                      // Origen y destino no pueden ser el mismo almacén
+                      setForm((f) => ({ ...f, almacen_origen_id: origen, almacen_destino_id: f.almacen_destino_id === origen ? '' : f.almacen_destino_id }))
+                    }}
                     className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
                   >
                     <option value="">Elige...</option>
@@ -305,7 +344,9 @@ export default function Movimientos() {
                     className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
                   >
                     <option value="">Elige...</option>
-                    {almacenes.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                    {almacenes
+                      .filter((a) => a.id !== form.almacen_origen_id)
+                      .map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                   </select>
                   {form.producto_id && form.almacen_destino_id && (
                     <p className="text-xs mt-1 text-ink-muted">
@@ -472,11 +513,28 @@ export default function Movimientos() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-ink-muted uppercase tracking-wide">Historial</h3>
-            {(filtroTipo !== 'todos' || filtroProducto || fechaDesde || fechaHasta) && (
-              <button onClick={limpiarFiltros} className="text-xs font-medium text-signal hover:underline">
-                Limpiar filtros
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {(filtroTipo !== 'todos' || filtroProducto || fechaDesde || fechaHasta) && (
+                <button onClick={limpiarFiltros} className="text-xs font-medium text-signal hover:underline">
+                  Limpiar filtros
+                </button>
+              )}
+              <BotonDescarga
+                opciones={opcionesDescarga([{
+                  etiqueta: 'Historial de movimientos',
+                  modelo: () => modeloMovimientos({
+                    construirConsulta: () => consultaHistorial(),
+                    filtros: [
+                      filtroTipo === 'todos' ? 'Todos los tipos' : `Tipo: ${filtroTipo}`,
+                      filtroProducto && `Producto: ${productos.find((p) => p.id === filtroProducto)?.nombre ?? ''}`,
+                      fechaDesde && `Desde ${fechaCorta(fechaDesde)}`,
+                      fechaHasta && `Hasta ${fechaCorta(fechaHasta)}`,
+                      `${totalMovimientos} movimientos`,
+                    ].filter(Boolean).join(' · '),
+                  }),
+                }], perfil?.nombre)}
+              />
+            </div>
           </div>
 
           {/* Filtros */}
@@ -527,12 +585,15 @@ export default function Movimientos() {
                   <button
                     key={m.id}
                     onClick={() => setMovimientoDetalle(m)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-stone-100/60 transition"
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-stone-100/60 transition ${m.anulado_at ? 'opacity-60' : ''}`}
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-ink truncate">{m.productos?.nombre ?? 'Producto eliminado'}</p>
-                        {m.estado === 'en_transito' && (
+                        <p className={`text-sm font-medium text-ink truncate ${m.anulado_at ? 'line-through' : ''}`}>{m.productos?.nombre ?? 'Producto eliminado'}</p>
+                        {m.anulado_at && (
+                          <span className="text-[10px] font-mono uppercase tracking-wide bg-danger/10 text-danger px-1.5 py-0.5 rounded">anulado</span>
+                        )}
+                        {!m.anulado_at && m.estado === 'en_transito' && (
                           <span className="text-[10px] font-mono uppercase tracking-wide bg-signal/10 text-signal px-1.5 py-0.5 rounded">tránsito</span>
                         )}
                       </div>
@@ -570,6 +631,7 @@ export default function Movimientos() {
           movimiento={movimientoDetalle}
           onClose={() => setMovimientoDetalle(null)}
           onConfirmarLlegada={confirmarLlegada}
+          onAnular={esAdmin ? anularMovimiento : null}
         />
       )}
     </div>

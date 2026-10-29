@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import Novedades from './Novedades'
 
 const linksBase = [
   { to: '/', label: 'Resumen', icon: IconHome },
@@ -8,6 +9,8 @@ const linksBase = [
   { to: '/importaciones', label: 'Importaciones', icon: IconShip },
   { to: '/almacenes', label: 'Almacenes', icon: IconWarehouse },
   { to: '/categorias', label: 'Categorías', icon: IconTag },
+  // soloEscritorio: no entra en la barra inferior del celular (desde ahí se llega por el Resumen)
+  { to: '/calidad', label: 'Calidad de datos', icon: IconLista, soloEscritorio: true },
 ]
 
 export default function Layout() {
@@ -70,11 +73,12 @@ export default function Layout() {
         <main className="flex-1 px-4 py-5 md:px-8 md:py-8 pb-24 md:pb-8">
           <Outlet />
         </main>
+        <Novedades />
       </div>
 
       {/* Barra inferior - solo celular */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-line flex z-10">
-        {links.map(({ to, label, icon: Icon }) => (
+        {links.filter((l) => !l.soloEscritorio).map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -147,6 +151,13 @@ function IconTag(props) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
       <path d="M20.6 12.6 12.7 20.5a2 2 0 0 1-2.8 0l-6.4-6.4a2 2 0 0 1 0-2.8L11.4 3.4A2 2 0 0 1 12.8 3H19a2 2 0 0 1 2 2v6.2a2 2 0 0 1-.4 1.4Z" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="15" cy="8" r="1.5" />
+    </svg>
+  )
+}
+function IconLista(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <path d="m4 6 1.5 1.5L8 5M4 12l1.5 1.5L8 11M4 18l1.5 1.5L8 17M11 6h9M11 12h9M11 18h9" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

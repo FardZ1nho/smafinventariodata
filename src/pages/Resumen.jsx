@@ -39,25 +39,31 @@ export default function Resumen() {
       const sinStock = conEstado.filter((c) => c.sinStock)
       const stockBajo = conEstado.filter((c) => c.stockBajo)
 
+      // Valorización: solo productos simples (los kits no tienen stock propio, contarlos duplicaría piezas).
+      // Se valoriza a precio de compra; los que tienen stock pero costo 0 se informan aparte.
+      const simplesConStock = (productos ?? []).filter((p) => p.tipo === 'simple' && (mapaTotales[p.id] ?? 0) > 0)
+
       setStats({
         totalProductos: (productos ?? []).length,
         totalKits: (productos ?? []).filter((p) => p.tipo === 'kit').length,
         sinStock: sinStock.length,
         stockBajo: stockBajo.length,
-        valorInventario: (productos ?? [])
-          .filter((p) => p.tipo === 'simple')
-          .reduce((acc, p) => acc + (mapaTotales[p.id] ?? 0) * Number(p.precio_venta || 0), 0),
+        valorCosto: simplesConStock.reduce((acc, p) => acc + mapaTotales[p.id] * Number(p.precio_compra || 0), 0),
+        valorVenta: simplesConStock.reduce((acc, p) => acc + mapaTotales[p.id] * Number(p.precio_venta || 0), 0),
+        sinCosto: simplesConStock.filter((p) => !(Number(p.precio_compra) > 0)).length,
       })
 
       // Sin stock primero (más crítico), luego stock bajo
       setAlertas([
         ...sinStock.map((c) => ({
           tipo: 'sin_stock',
+          id: c.producto.id,
           nombre: c.producto.nombre,
           detalle: c.producto.tipo === 'kit' ? 'No se puede armar ninguno' : '0 en stock',
         })),
         ...stockBajo.map((c) => ({
           tipo: 'stock_bajo',
+          id: c.producto.id,
           nombre: c.producto.nombre,
           detalle: `${c.stock} ${c.producto.unidad} (mínimo ${c.producto.stock_minimo})`,
         })),
@@ -82,15 +88,33 @@ export default function Resumen() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold text-ink mb-1">Resumen</h2>
-      <p className="text-sm text-ink-muted mb-6">Vista general de tu inventario.</p>
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div>
+          <h2 className="text-2xl font-semibold text-ink mb-1">Resumen</h2>
+          <p className="text-sm text-ink-muted">Vista general de tu inventario.</p>
+        </div>
+        <Link to="/calidad" className="text-xs font-medium text-signal hover:underline whitespace-nowrap mt-1">
+          Revisar calidad de datos →
+        </Link>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-        <Tarjeta label="Productos" valor={stats.totalProductos} />
-        <Tarjeta label="Kits" valor={stats.totalKits} />
-        <Tarjeta label="Sin stock" valor={stats.sinStock} resaltar={stats.sinStock > 0} critico />
-        <Tarjeta label="Stock bajo" valor={stats.stockBajo} resaltar={stats.stockBajo > 0} />
-        <Tarjeta label="Valor inventario" valor={`S/ ${stats.valorInventario.toFixed(2)}`} />
+        <Tarjeta label="Productos" valor={stats.totalProductos} to="/productos" />
+        <Tarjeta label="Kits" valor={stats.totalKits} to="/productos?filtro=kit" />
+        <Tarjeta label="Sin stock" valor={stats.sinStock} resaltar={stats.sinStock > 0} critico to="/productos?filtro=sin_stock" />
+        <Tarjeta label="Stock bajo" valor={stats.stockBajo} resaltar={stats.stockBajo > 0} to="/productos?filtro=stock_bajo" />
+        <Tarjeta
+          label="Valor a costo"
+          valor={`S/ ${stats.valorCosto.toFixed(2)}`}
+          nota={
+            <>
+              A precio de venta: S/ {stats.valorVenta.toFixed(2)}
+              {stats.sinCosto > 0 && (
+                <span className="block text-signal">{stats.sinCosto} con stock sin precio de compra</span>
+              )}
+            </>
+          }
+        />
       </div>
 
       {transito.length > 0 && (
@@ -146,19 +170,19 @@ export default function Resumen() {
         <>
           <div className="bg-white border border-line rounded-lg divide-y divide-line">
             {alertasPaginadas.map((a, i) => (
-              <div key={i} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2">
+              <Link key={i} to={`/productos?ver=${a.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-stone-100/60 transition">
+                <div className="flex items-center gap-2 min-w-0">
                   <span className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${
                     a.tipo === 'sin_stock' ? 'bg-danger/10 text-danger' : 'bg-signal/10 text-signal'
                   }`}>
                     {a.tipo === 'sin_stock' ? 'sin stock' : 'stock bajo'}
                   </span>
-                  <span className="text-sm font-medium text-ink">{a.nombre}</span>
+                  <span className="text-sm font-medium text-ink truncate">{a.nombre}</span>
                 </div>
-                <span className={`font-mono text-xs ${a.tipo === 'sin_stock' ? 'text-danger' : 'text-signal'}`}>
+                <span className={`font-mono text-xs shrink-0 ${a.tipo === 'sin_stock' ? 'text-danger' : 'text-signal'}`}>
                   {a.detalle}
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
           <Paginador pagina={paginaAlertas} totalPaginas={totalPaginasAlertas} onCambiar={setPaginaAlertas} />
@@ -168,13 +192,15 @@ export default function Resumen() {
   )
 }
 
-function Tarjeta({ label, valor, resaltar, critico }) {
+function Tarjeta({ label, valor, resaltar, critico, nota, to }) {
+  const Contenedor = to ? Link : 'div'
   return (
-    <div className="bg-white border border-line rounded-lg p-4">
+    <Contenedor {...(to ? { to } : {})} className={`block bg-white border border-line rounded-lg p-4 ${to ? 'hover:border-ink-muted/40 hover:shadow-sm transition' : ''}`}>
       <p className="text-xs text-ink-muted uppercase tracking-wide mb-1">{label}</p>
       <p className={`text-2xl font-semibold font-mono ${resaltar ? (critico ? 'text-danger' : 'text-signal') : 'text-ink'}`}>
         {valor}
       </p>
-    </div>
+      {nota && <p className="text-[11px] text-ink-muted mt-1">{nota}</p>}
+    </Contenedor>
   )
 }

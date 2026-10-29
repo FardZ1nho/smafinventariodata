@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { modeloProducto, opcionesDescarga } from '../lib/reportes'
+import { useAuth } from '../context/AuthContext'
+import BotonDescarga from './BotonDescarga'
 
 export default function ProductoDetalle({ producto, categorias, onClose }) {
+  const { perfil } = useAuth()
   const [stockPorAlmacen, setStockPorAlmacen] = useState([])
   const [disponibilidadKit, setDisponibilidadKit] = useState([])
   const [componentes, setComponentes] = useState([])
@@ -14,20 +18,28 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
   useEffect(() => {
     async function cargar() {
       setCargando(true)
+      // Los almacenes eliminados quedan con activo = false. Se ocultan si no tienen stock;
+      // si aún tienen, se muestran marcados como inactivos para no esconder existencias.
       if (esKit) {
-        const [{ data: disp }, { data: comps }] = await Promise.all([
+        const [{ data: disp }, { data: comps }, { data: inactivos }] = await Promise.all([
           supabase.from('kits_disponibilidad').select('*').eq('kit_id', producto.id),
           supabase.from('producto_componentes').select('cantidad, productos:componente_id(nombre, unidad)').eq('kit_id', producto.id),
+          supabase.from('almacenes').select('id').eq('activo', false),
         ])
-        setDisponibilidadKit(disp ?? [])
+        const idsInactivos = new Set((inactivos ?? []).map((a) => a.id))
+        setDisponibilidadKit(
+          (disp ?? [])
+            .map((d) => ({ ...d, inactivo: idsInactivos.has(d.almacen_id) }))
+            .filter((d) => !d.inactivo || d.disponible > 0)
+        )
         setComponentes(comps ?? [])
       } else {
         const { data } = await supabase
           .from('stock_almacen')
-          .select('cantidad, almacenes(id, nombre)')
+          .select('cantidad, almacenes(id, nombre, activo)')
           .eq('producto_id', producto.id)
           .order('cantidad', { ascending: false })
-        setStockPorAlmacen(data ?? [])
+        setStockPorAlmacen((data ?? []).filter((s) => s.almacenes?.activo !== false || s.cantidad !== 0))
       }
 
       const { data: movs } = await supabase
@@ -42,15 +54,15 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
     cargar()
   }, [producto.id, esKit])
 
-  const enTransito = movimientos.filter((m) => m.estado === 'en_transito')
+  const enTransito = movimientos.filter((m) => m.estado === 'en_transito' && !m.anulado_at)
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
-      <div className="bg-white w-full md:max-w-lg md:rounded-lg rounded-t-2xl max-h-[90vh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-labelledby="producto-detalle-titulo" className="bg-white w-full md:max-w-lg md:rounded-lg rounded-t-2xl max-h-[90vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-line flex items-start justify-between sticky top-0 bg-white">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <h3 className="font-semibold text-ink">{producto.nombre}</h3>
+              <h3 id="producto-detalle-titulo" className="font-semibold text-ink">{producto.nombre}</h3>
               {esKit && (
                 <span className="text-[10px] font-mono uppercase tracking-wide bg-stone-100 text-ink-muted px-1.5 py-0.5 rounded">kit</span>
               )}
@@ -61,10 +73,21 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
               {categoria?.nombre}
             </p>
           </div>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink text-xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Cerrar" className="text-ink-muted hover:text-ink text-xl leading-none">×</button>
         </div>
 
         <div className="p-5 space-y-6">
+          {!cargando && (
+            <div className="flex justify-end -mb-3">
+              <BotonDescarga
+                opciones={opcionesDescarga([{
+                  etiqueta: 'Ficha del producto',
+                  modelo: async () => modeloProducto({ producto, categoria, stockPorAlmacen, disponibilidadKit, componentes, movimientos }),
+                }], perfil?.nombre)}
+              />
+            </div>
+          )}
+
           {producto.foto_url && (
             <img src={producto.foto_url} alt={producto.nombre} className="w-full max-h-56 object-cover rounded-md border border-line" />
           )}
@@ -121,7 +144,10 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
                   <div className="border border-line rounded-md divide-y divide-line">
                     {disponibilidadKit.map((d) => (
                       <div key={d.almacen_id} className="flex items-center justify-between px-3 py-2">
-                        <span className="text-sm text-ink">{d.almacen_nombre}</span>
+                        <span className="text-sm text-ink">
+                          {d.almacen_nombre}
+                          {d.inactivo && <span className="ml-1.5 text-[10px] font-mono uppercase text-ink-muted">inactivo</span>}
+                        </span>
                         <span className={`font-mono text-sm font-medium ${d.disponible <= 0 ? 'text-danger' : 'text-ink'}`}>
                           {d.disponible} {producto.unidad}
                         </span>
@@ -153,7 +179,10 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
                 <div className="border border-line rounded-md divide-y divide-line">
                   {stockPorAlmacen.map((s, i) => (
                     <div key={i} className="flex items-center justify-between px-3 py-2">
-                      <span className="text-sm text-ink">{s.almacenes?.nombre}</span>
+                      <span className="text-sm text-ink">
+                        {s.almacenes?.nombre}
+                        {s.almacenes?.activo === false && <span className="ml-1.5 text-[10px] font-mono uppercase text-ink-muted">inactivo</span>}
+                      </span>
                       <span className={`font-mono text-sm font-medium ${s.cantidad <= 0 ? 'text-danger' : s.cantidad <= producto.stock_minimo ? 'text-signal' : 'text-ink'}`}>
                         {s.cantidad} {producto.unidad}
                       </span>
@@ -184,7 +213,9 @@ export default function ProductoDetalle({ producto, categorias, onClose }) {
                         {m.tipo === 'transferencia'
                           ? `${m.origen?.nombre ?? '?'} → ${m.destino?.nombre ?? '?'}`
                           : `${m.tipo === 'entrada' ? 'Entrada' : 'Salida'} · ${m.almacenes?.nombre ?? '?'}`}
-                        {m.estado === 'en_transito' && (
+                        {m.anulado_at ? (
+                          <span className="ml-1.5 text-[10px] font-mono uppercase text-danger">anulado</span>
+                        ) : m.estado === 'en_transito' && (
                           <span className="ml-1.5 text-[10px] font-mono uppercase text-signal">en tránsito</span>
                         )}
                       </span>

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import Paginador from '../components/Paginador'
 import ImportacionDetalle from '../components/ImportacionDetalle'
+import BotonDescarga from '../components/BotonDescarga'
+import { modeloListadoImportaciones, opcionesDescarga } from '../lib/reportes'
+import { useAuth } from '../context/AuthContext'
 
 const POR_PAGINA = 10
 
@@ -13,6 +16,7 @@ const ETIQUETA_ESTADO = {
 }
 
 export default function Importaciones() {
+  const { perfil } = useAuth()
   const [importaciones, setImportaciones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -52,8 +56,25 @@ export default function Importaciones() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold text-ink mb-1">Importaciones</h2>
-      <p className="text-sm text-ink-muted mb-6">Lotes de productos agrupados por código de importación.</p>
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div>
+          <h2 className="text-2xl font-semibold text-ink mb-1">Importaciones</h2>
+          <p className="text-sm text-ink-muted">Lotes de productos agrupados por código de importación.</p>
+        </div>
+        <BotonDescarga
+          opciones={opcionesDescarga([{
+            etiqueta: 'Listado de importaciones',
+            modelo: async () => modeloListadoImportaciones({
+              importaciones: filtradas,
+              filtros: [
+                filtroEstado === 'todas' ? 'Todos los estados' : `Estado: ${ETIQUETA_ESTADO[filtroEstado].texto}`,
+                busqueda && `Búsqueda: "${busqueda}"`,
+                `${filtradas.length} de ${importaciones.length} importaciones`,
+              ].filter(Boolean).join(' · '),
+            }),
+          }], perfil?.nombre)}
+        />
+      </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
         <input
@@ -104,7 +125,12 @@ export default function Importaciones() {
                     <p className="text-xs text-ink-muted mt-0.5">
                       {i.proveedor && <>{i.proveedor} · </>}
                       {i.total_lineas} producto{i.total_lineas === 1 ? '' : 's'} · {i.total_unidades} unidades
-                      {i.fecha_llegada_estimada && (
+                      {i.unidades_esperadas != null && i.unidades_esperadas !== i.total_unidades && (
+                        <span className="text-signal"> de {i.unidades_esperadas} pedidas</span>
+                      )}
+                      {i.estado === 'confirmado' && i.ultima_recepcion ? (
+                        <> · recibido {new Date(i.ultima_recepcion).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
+                      ) : i.fecha_llegada_estimada && (
                         <> · llega {new Date(i.fecha_llegada_estimada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</>
                       )}
                     </p>

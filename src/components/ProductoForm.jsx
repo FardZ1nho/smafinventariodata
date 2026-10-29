@@ -122,10 +122,10 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
-      <div className="bg-white w-full md:max-w-lg md:rounded-lg rounded-t-2xl max-h-[90vh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-labelledby="producto-form-titulo" className="bg-white w-full md:max-w-lg md:rounded-lg rounded-t-2xl max-h-[90vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-line flex items-center justify-between sticky top-0 bg-white">
-          <h3 className="font-semibold text-ink">{esEdicion ? 'Editar producto' : 'Nuevo producto'}</h3>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink text-xl leading-none">×</button>
+          <h3 id="producto-form-titulo" className="font-semibold text-ink">{esEdicion ? 'Editar producto' : 'Nuevo producto'}</h3>
+          <button onClick={onClose} aria-label="Cerrar" className="text-ink-muted hover:text-ink text-xl leading-none">×</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -151,8 +151,9 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">Nombre</label>
+            <label htmlFor="pf-nombre" className="block text-sm font-medium text-ink mb-1.5">Nombre</label>
             <input
+              id="pf-nombre"
               value={form.nombre}
               onChange={(e) => actualizar('nombre', e.target.value)}
               className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
@@ -192,8 +193,9 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">SKU / código</label>
+              <label htmlFor="pf-sku" className="block text-sm font-medium text-ink mb-1.5">SKU / código</label>
               <input
+                id="pf-sku"
                 value={form.sku}
                 onChange={(e) => actualizar('sku', e.target.value)}
                 className="w-full rounded-md border border-line px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
@@ -201,8 +203,9 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">Categoría</label>
+              <label htmlFor="pf-categoria" className="block text-sm font-medium text-ink mb-1.5">Categoría</label>
               <select
+                id="pf-categoria"
                 value={form.categoria_id}
                 onChange={(e) => actualizar('categoria_id', e.target.value)}
                 className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
@@ -215,26 +218,29 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">Precio compra</label>
+              <label htmlFor="pf-precio-compra" className="block text-sm font-medium text-ink mb-1.5">Precio compra</label>
               <input
                 type="number" step="0.01" min="0"
+                id="pf-precio-compra"
                 value={form.precio_compra}
                 onChange={(e) => actualizar('precio_compra', e.target.value)}
                 className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">Precio venta</label>
+              <label htmlFor="pf-precio-venta" className="block text-sm font-medium text-ink mb-1.5">Precio venta</label>
               <input
                 type="number" step="0.01" min="0"
+                id="pf-precio-venta"
                 value={form.precio_venta}
                 onChange={(e) => actualizar('precio_venta', e.target.value)}
                 className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">Unidad</label>
+              <label htmlFor="pf-unidad" className="block text-sm font-medium text-ink mb-1.5">Unidad</label>
               <input
+                id="pf-unidad"
                 value={form.unidad}
                 onChange={(e) => actualizar('unidad', e.target.value)}
                 className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
@@ -243,9 +249,10 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">Stock mínimo (alerta, sumando todos los almacenes)</label>
+            <label htmlFor="pf-stock-minimo" className="block text-sm font-medium text-ink mb-1.5">Stock mínimo (alerta, sumando todos los almacenes)</label>
             <input
               type="number" min="0"
+              id="pf-stock-minimo"
               value={form.stock_minimo}
               onChange={(e) => actualizar('stock_minimo', e.target.value)}
               className="w-full rounded-md border border-line px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
@@ -288,11 +295,12 @@ export default function ProductoForm({ producto, categorias, productosSimples, o
                     </div>
                     <input
                       type="number" min="1"
+                      aria-label="Cantidad de la pieza"
                       value={comp.cantidad}
                       onChange={(e) => actualizarComponente(i, 'cantidad', e.target.value)}
                       className="w-16 rounded-md border border-line px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal"
                     />
-                    <button type="button" onClick={() => quitarComponente(i)} className="text-danger text-lg leading-none px-1">×</button>
+                    <button type="button" onClick={() => quitarComponente(i)} aria-label="Quitar pieza" className="text-danger text-lg leading-none px-1">×</button>
                   </div>
                 ))}
               </div>
